@@ -30,8 +30,8 @@ EDL_SCENE_MARKER = 2
 EDL_COMMERCIAL_BREAK = 3
 
 # Define how big we want our steps to be if using Advanced Mode (in seconds)
-SMALL_STEP = 0.1
-BIG_STEP = 0.5
+SMALL_STEP = 100
+BIG_STEP = 60000
 
 # Constants for Advanced Mode menu
 BIG_STEP_BACK = 0
@@ -81,7 +81,7 @@ class EDLWriter(object):
         if update:
 
             if self.is_open:
-                self.current["end"] = marktime
+                self.current["end"] = self.player.toMillis(marktime) / 1000.0
                 self.current["type"] = edltype
                 self.edllist.append(self.current)
                 notify("New markers added.")
@@ -89,7 +89,7 @@ class EDLWriter(object):
                 self.is_open = False
 
             else:
-                self.current["start"] = marktime
+                self.current["start"] = self.player.toMillis(marktime) / 1000.0
                 notify("Starting marker added.")
                 self.is_open = True
 
@@ -105,22 +105,21 @@ class EDLWriter(object):
             action = Select("EDL Writer", [x[1] for x in MENU_LIST])
 
             selected = MENU_LIST[action][0]
-            oldtime = seektime
 
             if selected == BIG_STEP_BACK:
-                seektime -= BIG_STEP
+                seektime = self.player.calcTime(seektime, BIG_STEP, True)
                 seek = True
 
             elif selected == SMALL_STEP_BACK:
-                seektime -= SMALL_STEP
+                seektime = self.player.calcTime(seektime, SMALL_STEP, True)
                 seek = True
 
             elif selected == SMALL_STEP_FORWARD:
-                seektime += SMALL_STEP
+                seektime = self.player.calcTime(seektime, SMALL_STEP)
                 seek = True
 
             elif selected == BIG_STEP_FORWARD:
-                seektime += BIG_STEP
+                seektime = self.player.calcTime(seektime, BIG_STEP)
                 seek = True
 
             elif selected == DONE:
@@ -138,9 +137,7 @@ class EDLWriter(object):
                 # CURRENT ATTEMPT TRIES TO JUMP TO 1 SECOND BEFORE ADJUSTED TIME
                 # AND THEN PAUSE...
                 # ...DOESN'T WORK.
-                self.player.seekTime(seektime-1)
-                xbmc.sleep(1000)
-                self.player.pause()
+                self.player.seekVideoTime(seektime)
 
         return update, seektime
 

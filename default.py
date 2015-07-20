@@ -30,6 +30,19 @@ import xbmc
 import xbmcaddon
 import xbmcgui
 
+def sendJSON(method, json_params = {}):
+
+
+    #This the generated JSON-RPC query code
+    params = json.dumps({"jsonrpc":"2.0","method": method,"params": json_params,"id":0})
+
+    #Response data is a binary string and I want to read it easily
+    responseObject = xbmc.executeJSONRPC(params)
+
+    #Doing a little pretty formating to get it to look nice on my output terminal
+    print json.loads(responseObject)
+    return json.loads(responseObject).get("result")
+
 class EDLPlayer(xbmc.Player):
 
     def __init__( self, *args, **kwargs ):
@@ -44,17 +57,18 @@ class EDLPlayer(xbmc.Player):
             # We've started marking, so disable future events until we've
             # finished
             self.is_marking = True
-            self.addPoint(self.getTime())
+            self.addPoint(self.getVideoTime())
 
     def onPlayBackResumed(self):
         pass
 
     def onPlayBackStarted(self):
-        try:
+        # try:
             vname = splitext(basename(self.getPlayingFile()))[0]
             self.writer.SetVideoName(vname)
-        except:
-            self.writer.SetVideoName("CHANGE_ME")
+            self.playerid = self.getPlayerID()
+        # except:
+        #     self.writer.SetVideoName("CHANGE_ME")
 
     def onPlayBackEnded(self):
         self.is_active = False
@@ -75,6 +89,48 @@ class EDLPlayer(xbmc.Player):
         # If we're here, we should have added a marker so we can re-enable
         # event handling
         self.is_marking = False
+
+    def getPlayerID(self):
+        result = sendJSON("Player.GetActivePlayers")
+        if result:
+            for player in result:
+                if player["type"] == "video":
+                    return player["playerid"]
+
+    def getVideoTime(self):
+        params = {"playerid": self.playerid,
+                  "properties": ["time"]}
+        result = sendJSON("Player.GetProperties", params)
+        return result["time"]
+
+    def seekVideoTime(self, newtime):
+        params = {"playerid": self.playerid,
+                  "value": newtime}
+        result = sendJSON("Player.Seek", params)
+
+    def calcTime(self, oldtime, increment, decrease = False):
+        if decrease:
+            increment = increment * (-1)
+
+        return self.fromMillis(self.toMillis(oldtime) + increment)
+
+    def toMillis(self, oldtime):
+        millis = 0
+        millis += oldtime["hours"] * 60 * 60 * 1000
+        millis += oldtime["minutes"] * 60 * 1000
+        millis += oldtime["seconds"] * 1000
+        millis += oldtime["milliseconds"]
+        return millis
+
+    def fromMillis(self, millis):
+        s = int(float(millis)/1000)
+        ms = millis - (s * 1000)
+        m, s = divmod(s, 60)
+        h, m = divmod(m, 60)
+        return {"hours": h,
+                "minutes": m,
+                "seconds": s,
+                "milliseconds": ms}
 
 writer = EDLWriter()
 player = EDLPlayer(xbmc.PLAYER_CORE_DVDPLAYER, writer=writer)

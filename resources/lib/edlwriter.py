@@ -12,15 +12,15 @@
     You should have received a copy of the GNU General Public License
     along with this program. If not, see <http://www.gnu.org/licenses/>.
 '''
+from PIL import Image
 
 import xbmcgui, xbmc
 
 from resources.lib.notifications import notify, yesno
 
-
 # Set to True if you want to be able to adjust marker time
 # Warning: this is experimental (i.e. not working well!)
-ADVANCED_MODE = True
+ADVANCED_MODE = False
 
 # Define types of marker
 # This isn't implemented yet...
@@ -31,7 +31,8 @@ EDL_COMMERCIAL_BREAK = 3
 
 # Define how big we want our steps to be if using Advanced Mode (in seconds)
 SMALL_STEP = 100
-BIG_STEP = 60000
+BIG_STEP = 500
+REFRESH = 500
 
 # Constants for Advanced Mode menu
 BIG_STEP_BACK = 0
@@ -48,6 +49,11 @@ MENU_LIST = [(BIG_STEP_BACK, "Big step back"),
              (BIG_STEP_FORWARD, "Big step forward"),
              (DONE, "Done")]
 
+TYPE_MENU = [(EDL_CUT, "Cut"),
+             (EDL_MUTE, "Mute"),
+             (EDL_SCENE_MARKER, "Scene Marker"),
+             (EDL_COMMERCIAL_BREAK, "Commercial Break")]
+
 class EDLWriter(object):
     def __init__(self, default = EDL_COMMERCIAL_BREAK):
         self.videoname = None
@@ -55,6 +61,7 @@ class EDLWriter(object):
         self.edllist = []
         self.current = {}
         self.default = default
+        self.capture = xbmc.RenderCapture()
 
     def SetVideoName(self, vname):
         self.videoname = vname
@@ -82,7 +89,7 @@ class EDLWriter(object):
 
             if self.is_open:
                 self.current["end"] = self.player.toMillis(marktime) / 1000.0
-                self.current["type"] = edltype
+                self.current["type"] = self.selectEDLtype()
                 self.edllist.append(self.current)
                 notify("New markers added.")
                 self.current = {}
@@ -93,6 +100,10 @@ class EDLWriter(object):
                 notify("Starting marker added.")
                 self.is_open = True
 
+    def selectEDLtype(self):
+        edl = Select("EDL Writer", [x[1] for x in TYPE_MENU])
+        return TYPE_MENU[edl][0]
+
     def adjustTime(self, adjustTime):
 
         finished = False
@@ -102,24 +113,26 @@ class EDLWriter(object):
         while not finished:
             seek = False
 
+            self.takeSnapshot()
+
             action = Select("EDL Writer", [x[1] for x in MENU_LIST])
 
             selected = MENU_LIST[action][0]
 
             if selected == BIG_STEP_BACK:
-                seektime = self.player.calcTime(seektime, BIG_STEP, True)
+                seektime = self.player.calcTime(seektime, BIG_STEP + REFRESH, True)
                 seek = True
 
             elif selected == SMALL_STEP_BACK:
-                seektime = self.player.calcTime(seektime, SMALL_STEP, True)
+                seektime = self.player.calcTime(seektime, SMALL_STEP + REFRESH, True)
                 seek = True
 
             elif selected == SMALL_STEP_FORWARD:
-                seektime = self.player.calcTime(seektime, SMALL_STEP)
+                seektime = self.player.calcTime(seektime, SMALL_STEP - REFRESH)
                 seek = True
 
             elif selected == BIG_STEP_FORWARD:
-                seektime = self.player.calcTime(seektime, BIG_STEP)
+                seektime = self.player.calcTime(seektime, BIG_STEP - REFRESH)
                 seek = True
 
             elif selected == DONE:
@@ -138,8 +151,26 @@ class EDLWriter(object):
                 # AND THEN PAUSE...
                 # ...DOESN'T WORK.
                 self.player.seekVideoTime(seektime)
+                self.player.Toggle()
+                xbmc.sleep(REFRESH)
+                self.player.Toggle()
 
         return update, seektime
+
+    def takeSnapshot(self):
+
+        self.capture.capture(400, 400)
+        while self.capture.getCaptureState() == xbmc.CAPTURE_STATE_WORKING:
+            xbmc.sleep(100)
+        if self.capture.getCaptureState() == xbmc.CAPTURE_STATE_DONE:
+
+            size = (self.capture.getWidth(), self.capture.getHeight())
+            mode = 'RGBA'
+            img = Image.frombuffer(mode, size, self.capture.getImage(), 'raw', mode, 0, 1)
+            img.save("test.jpg")
+
+        else:
+            notify("Capture error.")
 
     def Finish(self):
         with open("{0}.edl".format(self.videoname), "w") as edl:

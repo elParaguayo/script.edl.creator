@@ -22,6 +22,7 @@
 
 import simplejson as json
 from os.path import splitext, basename
+import PIL
 
 from resources.lib.notifications import notify
 from resources.lib.edlwriter import EDLWriter
@@ -32,15 +33,15 @@ import xbmcgui
 
 def sendJSON(method, json_params = {}):
 
-
     #This the generated JSON-RPC query code
-    params = json.dumps({"jsonrpc":"2.0","method": method,"params": json_params,"id":0})
+    params = json.dumps({"jsonrpc":"2.0",
+                         "method": method,
+                         "params": json_params,
+                         "id":0})
 
     #Response data is a binary string and I want to read it easily
     responseObject = xbmc.executeJSONRPC(params)
 
-    #Doing a little pretty formating to get it to look nice on my output terminal
-    print json.loads(responseObject)
     return json.loads(responseObject).get("result")
 
 class EDLPlayer(xbmc.Player):
@@ -63,12 +64,12 @@ class EDLPlayer(xbmc.Player):
         pass
 
     def onPlayBackStarted(self):
-        # try:
+        try:
             vname = splitext(basename(self.getPlayingFile()))[0]
             self.writer.SetVideoName(vname)
             self.playerid = self.getPlayerID()
-        # except:
-        #     self.writer.SetVideoName("CHANGE_ME")
+        except:
+            self.writer.SetVideoName("CHANGE_ME")
 
     def onPlayBackEnded(self):
         self.is_active = False
@@ -89,6 +90,7 @@ class EDLPlayer(xbmc.Player):
         # If we're here, we should have added a marker so we can re-enable
         # event handling
         self.is_marking = False
+        self.Toggle()
 
     def getPlayerID(self):
         result = sendJSON("Player.GetActivePlayers")
@@ -131,6 +133,10 @@ class EDLPlayer(xbmc.Player):
                 "minutes": m,
                 "seconds": s,
                 "milliseconds": ms}
+
+    def Toggle(self):
+        params = {"playerid": self.playerid}
+        sendJSON("Player.PlayPause", params)
 
 writer = EDLWriter()
 player = EDLPlayer(xbmc.PLAYER_CORE_DVDPLAYER, writer=writer)
